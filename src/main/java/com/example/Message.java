@@ -1,5 +1,8 @@
 package com.example;
 
+import lombok.Data;
+
+@Data
 public class Message {
   /** How many times this message has been delivered. */
   private int attempts;
@@ -11,6 +14,8 @@ public class Message {
   private String receiptId;
 
   private String msgBody;
+
+  Message(){}
 
   Message(String msgBody) {
     this.msgBody = msgBody;
@@ -53,4 +58,5 @@ public class Message {
   protected void incrementAttempts() {
     this.attempts++;
   }
+
 }

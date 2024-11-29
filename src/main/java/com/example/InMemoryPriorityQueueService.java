@@ -1,40 +1,27 @@
 package com.example;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.example.QueueException.QueueException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public class InMemoryPriorityQueueService implements QueueService {
     private final Map<String, Queue<PriorityMessage>> queues;
 
-    private long visibilityTimeout;
-
     public InMemoryPriorityQueueService() {
-        this.queues = new ConcurrentHashMap<>();
-
-        String propFileName = "config.properties";
-        Properties confInfo = new Properties();
-
-        try (InputStream inStream = getClass().getClassLoader().getResourceAsStream(propFileName)) {
-            confInfo.load(inStream);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        this.visibilityTimeout = Integer.parseInt(confInfo.getProperty("visibilityTimeout", "30"));
+        this.queues = new HashMap<>();
     }
 
     @Override
     public void push(String queueUrl, String msgBody) {
+        if (queueUrl == null)
+            throw new QueueException("EXC1","Queue Url Is Null.");
+
         Queue<PriorityMessage> queue = queues.get(queueUrl);
         if (queue == null) {
-            queue = new PriorityQueue<>(Comparator.comparingInt(PriorityMessage::getPriority)
+            queue = new PriorityBlockingQueue<>(10, Comparator.comparingInt(PriorityMessage::getPriority)
                     .reversed()
                     .thenComparingLong(PriorityMessage::getTimestamp));
             queues.put(queueUrl, queue);
@@ -45,7 +32,11 @@ public class InMemoryPriorityQueueService implements QueueService {
 
     @Override
     public PriorityMessage pull(String queueUrl) {
+        if (queueUrl == null)
+            throw new QueueException("EXC1","Queue Url Is Null.");
+
         Queue<PriorityMessage> queue = queues.get(queueUrl);
+
         if (queue == null || queue.isEmpty()) {
             return null;
         }
@@ -53,20 +44,23 @@ public class InMemoryPriorityQueueService implements QueueService {
         PriorityMessage msg = queue.peek();
         msg.setReceiptId(UUID.randomUUID().toString());
         msg.incrementAttempts();
-        msg.setVisibleFrom(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(visibilityTimeout));
+        msg.setVisibleFrom(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(Constants.VISIBILITY_TIMEOUT));
 
         return msg;
     }
 
     @Override
     public void delete(String queueUrl, String receiptId) {
+        if (queueUrl == null)
+            throw new QueueException("EXC1","Queue Url Is Null.");
+
         Queue<PriorityMessage> queue = queues.get(queueUrl);
 
         if(queue == null || queue.isEmpty()) {
             return;
         }
 
-        long nowTime = now();
+        long nowTime = System.currentTimeMillis();
         for (Iterator<PriorityMessage> it = queue.iterator(); it.hasNext(); ) {
             Message msg = it.next();
             if (!msg.isVisibleAt(nowTime) && msg.getReceiptId().equals(receiptId)) {
@@ -77,20 +71,13 @@ public class InMemoryPriorityQueueService implements QueueService {
     }
 
     private int extractPriorityFromJson(String msgBody) {
-        try {
+        try{
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(msgBody);
-            JsonNode priorityNode = rootNode.get("priority");
-            if (priorityNode != null && priorityNode.isInt()) {
-                return priorityNode.intValue();
-            }
+            MessageBody messageBody = mapper.readValue(msgBody, MessageBody.class);
+            return messageBody.getPriority();
         } catch (Exception e) {
             e.printStackTrace();
         }
         return 0; // Default priority if not found or error occurred
-    }
-
-    long now() {
-        return System.currentTimeMillis();
     }
 }

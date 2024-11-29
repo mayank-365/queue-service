@@ -114,7 +114,7 @@ public class InMemoryPriorityQueueServiceTest {
     }
 
     @Test
-    public void testFIFO3Msgs(){
+    public void testFIFO3Msgs() throws InterruptedException {
         String [] msgStrs = {
                 "{\n" +
                         "    \"name\":\"John1\",\n" +
@@ -135,21 +135,23 @@ public class InMemoryPriorityQueueServiceTest {
 
         // push all 3 messages
         qs.push(queueUrl, msgStrs[0]);
+        Thread.sleep(500);
         qs.push(queueUrl, msgStrs[1]);
+        Thread.sleep(500);
         qs.push(queueUrl, msgStrs[2]);
 
         // pull first message
         PriorityMessage msg1 = qs.pull(queueUrl);
+        qs.delete(queueUrl , msg1.getReceiptId());
 
         // pull second message
         PriorityMessage msg2 = qs.pull(queueUrl);
+        qs.delete(queueUrl , msg2.getReceiptId());
 
         // pull third message
         PriorityMessage msg3 = qs.pull(queueUrl);
-
-        qs.delete(queueUrl , msg1.getReceiptId());
-        qs.delete(queueUrl , msg2.getReceiptId());
         qs.delete(queueUrl , msg3.getReceiptId());
+
 
         // all messages will be of same priority
         assertEquals(1, msg1.getPriority());

@@ -1,7 +1,8 @@
 package com.example;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -11,86 +12,103 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class RedisQueueService implements QueueService {
 
-    private final String redisEndpointUrl;
-    private final String redisApiToken;
-
-    private static final String REDIS_ZADD_COMMAND = "zadd";
-    private static final String REDIS_ZPOPMAX_COMMAND = "zpopmax";
-    private static final String REDIS_REV_RANGE_COMMAND = "zrevrange";
-
-
-    RedisQueueService() {
-        String propFileName = "config.properties";
-        Properties confInfo = new Properties();
-
-        try (InputStream inStream = getClass().getClassLoader().getResourceAsStream(propFileName)) {
-            confInfo.load(inStream);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        this.redisEndpointUrl = confInfo.getProperty("redisEndpointUrl");
-        this.redisApiToken = confInfo.getProperty("redisApiToken");
-    }
 
     @Override
     public void push(String queueUrl, String msgBody) {
-        int priority = extractPriorityFromJson(msgBody);
-        makePostRequest(redisEndpointUrl + "/"+ REDIS_ZADD_COMMAND + "/" + queueUrl + "/" + priority, msgBody);
+        try{
+            msgBody = Utils.updateRedisMessageFields(msgBody);
+            makePostRequest(Constants.REDIS_CONF.getRedisEndpointUrl() + "/" + Constants.REDIS_ZADD_COMMAND + "/" + queueUrl + "/" + extractPriorityFromJson(msgBody), msgBody);
+        }
+        catch (Exception ex){
+            ex.printStackTrace();
+        }
     }
 
     @Override
     public PriorityMessage pull(String queueUrl) {
 
-        String redisResponse = makeGetRequest(redisEndpointUrl + "/"+ REDIS_REV_RANGE_COMMAND+ "/"+ queueUrl+"/0/0");
+        String redisResponse = makeGetRequest(Constants.REDIS_CONF.getRedisEndpointUrl() + "/"+ Constants.REDIS_REV_RANGE_COMMAND+ "/"+ queueUrl+"/0/-1");
+        List<PriorityMessage> messages = createMessageFromRedisResponse(redisResponse);
 
-        return createMessageFromRedisResponse(redisResponse);
+        int maxScore = messages.stream()
+                .mapToInt(PriorityMessage::getPriority)
+                .max()
+                .orElse(0);
+
+        List<PriorityMessage> maxScoreMessages = messages.stream()
+                .filter(msg -> msg.getPriority() == maxScore)
+                .collect(Collectors.toList());
+
+        PriorityMessage message = maxScoreMessages.stream()
+                .min(Comparator.comparingLong(PriorityMessage::getTimestamp))
+                .orElse(null);
+
+        if (message == null)
+            return null;
+
+        String existingMessage = PriorityMessageToRedisApiResponseMapper.convertPriorityMessageToRedisApiResponse(message);
+
+        message.setVisibleFrom(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(Constants.VISIBILITY_TIMEOUT));
+        message.incrementAttempts();
+
+        deleteMessage(queueUrl,existingMessage, message.getPriority());
+        updateExistingMessage(queueUrl, message);
+
+        return message;
     }
 
-    // for now, This deletes peek element from redis sorted set.
-    // will try to find a solution if we can delete using receipt id
+    private void deleteMessage(String queueUrl, String message, int priority) {
+        String removeUrl = Constants.REDIS_CONF.getRedisEndpointUrl() + "/" + Constants.REDIS_ZREM_COMMAND + "/" + queueUrl + "/" + priority;
+        makePostRequest(removeUrl, message);
+
+    }
+    private void updateExistingMessage(String queueUrl, PriorityMessage message) {
+        String updatedMessage = PriorityMessageToRedisApiResponseMapper.convertPriorityMessageToRedisApiResponse(message).toString();
+        makePostRequest(Constants.REDIS_CONF.getRedisEndpointUrl() + "/" + Constants.REDIS_ZADD_COMMAND + "/" + queueUrl + "/" + message.getPriority(), updatedMessage);
+    }
+
     @Override
     public void delete(String queueUrl, String receiptId) {
-        makeGetRequest(redisEndpointUrl + "/"+ REDIS_ZPOPMAX_COMMAND+ "/"+ queueUrl);
+        String apiResponse = makeGetRequest(Constants.REDIS_CONF.getRedisEndpointUrl() + "/"+ Constants.REDIS_REV_RANGE_COMMAND+ "/"+ queueUrl +"/0/-1");
+        List<PriorityMessage> messages = createMessageFromRedisResponse(apiResponse);
+        messages.forEach(message -> {
+            if (message.getReceiptId().equals(receiptId) && !message.isVisibleAt(System.currentTimeMillis())) {
+                String foundMessage = PriorityMessageToRedisApiResponseMapper.convertPriorityMessageToRedisApiResponse(message).toString();
+                deleteMessage(queueUrl, foundMessage, message.getPriority());
+            }
+        });
     }
 
     private int extractPriorityFromJson(String msgBody) {
-        try {
+        try{
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(msgBody);
-            JsonNode priorityNode = rootNode.get("priority");
-            if (priorityNode != null && priorityNode.isInt()) {
-                return priorityNode.intValue();
-            }
+            RedisMessageBody messageBody = mapper.readValue(msgBody, RedisMessageBody.class);
+            return messageBody.getScore();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return 0; // Default priority if not found or error occurred
+        return 0;
     }
 
     // this method creates a Message object from response received from redis.
-    private PriorityMessage createMessageFromRedisResponse(String response) {
+    private List<PriorityMessage> createMessageFromRedisResponse(String response) {
         try {
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(response);
-            JsonNode resultNode = rootNode.get("result");
-
-            if (resultNode != null && resultNode.isArray() && resultNode.size() > 0) {
-                JsonNode messageNode = mapper.readTree(resultNode.get(0).asText());
-
-                int priority = messageNode.has("priority") ? messageNode.get("priority").asInt() : 0;
-                String messageBody = messageNode.has("content") ? messageNode.get("content").asText() : "";
-
-                return new PriorityMessage(messageBody, UUID.randomUUID().toString(), priority);
-            } else {
-                // Queue is empty or no valid message found
-                return null;
+            RedisApiResponse apiResponse = mapper.readValue(response, RedisApiResponse.class);
+            ArrayList<PriorityMessage> messages = new ArrayList<>();
+            for (String line : apiResponse.getResult()){
+                RedisMessageBody redisMessageBody = mapper.readValue(line, RedisMessageBody.class);
+                PriorityMessage msg = new PriorityMessage(redisMessageBody
+                        .getMessage().getMsgBody(), redisMessageBody.getMessage().getReceiptId(), redisMessageBody.getScore(), redisMessageBody.getTimestamp(),redisMessageBody.getMessage().getAttempts(),redisMessageBody.getMessage().getVisibleFrom());
+                messages.add(msg);
             }
+            return messages;
         } catch (IOException e) {
             throw new RuntimeException("Failed to parse JSON response", e);
         }
@@ -101,15 +119,16 @@ public class RedisQueueService implements QueueService {
 
         HttpGet httpGet = new HttpGet(apiUrl);
         httpGet.addHeader("Content-Type", "application/json");
-        httpGet.addHeader("Authorization", String.format("Bearer %s", redisApiToken));
+        httpGet.addHeader("Authorization", String.format("Bearer %s", Constants.REDIS_CONF.getRedisApiToken()));
 
         try {
-            CloseableHttpResponse response = client.execute(httpGet);
+            HttpResponse response = client.execute(httpGet);
 
             if (response.getStatusLine().getStatusCode() != 200) {
                 throw new RuntimeException(String.format("Redis Api failed with status %s", response.getStatusLine().getStatusCode()));
             }
-            return EntityUtils.toString(response.getEntity());
+            String responseEntity = EntityUtils.toString(response.getEntity());
+            return responseEntity;
         } catch (Exception e) {
             throw new RuntimeException("Unable to call Redis api", e);
         }
@@ -127,12 +146,12 @@ public class RedisQueueService implements QueueService {
         }
 
         httpPost.addHeader("Content-Type", "application/json");
-        httpPost.addHeader("Authorization", String.format("Bearer %s", redisApiToken));
+        httpPost.addHeader("Authorization", String.format("Bearer %s", Constants.REDIS_CONF.getRedisApiToken()));
 
         try {
             CloseableHttpResponse response = client.execute(httpPost);
 
-            if (response.getStatusLine().getStatusCode() != 200) {
+            if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
                 throw new RuntimeException(String.format("Redis Api failed with status %s", response.getStatusLine().getStatusCode()));
             }
             return EntityUtils.toString(response.getEntity());

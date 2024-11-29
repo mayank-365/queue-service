@@ -43,7 +43,7 @@ public class InMemoryQueueService implements QueueService {
       return null;
     }
 
-    long nowTime = now();
+    long nowTime = System.currentTimeMillis();
     Optional<Message> msgOpt = queue.stream().filter(m -> m.isVisibleAt(nowTime)).findFirst();
     if (msgOpt.isEmpty()) {
       return null;
@@ -61,7 +61,7 @@ public class InMemoryQueueService implements QueueService {
   public void delete(String queueUrl, String receiptId) {
     Queue<Message> queue = queues.get(queueUrl);
     if (queue != null) {
-      long nowTime = now();
+      long nowTime = System.currentTimeMillis();
 
       for (Iterator<Message> it = queue.iterator(); it.hasNext(); ) {
         Message msg = it.next();
@@ -73,7 +73,4 @@ public class InMemoryQueueService implements QueueService {
     }
   }
 
-  long now() {
-    return System.currentTimeMillis();
-  }
 }
