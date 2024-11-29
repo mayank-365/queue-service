@@ -357,11 +357,7 @@ public class FileQueueService implements QueueService {
       return true;
     }
 
-    if (Long.parseLong(fields[1]) >= now() && fields[2].equals(receiptId)) {
-      return true;
-    }
-
-    return false;
+      return Long.parseLong(fields[1]) >= now() && fields[2].equals(receiptId);
   }
 
   long now() {

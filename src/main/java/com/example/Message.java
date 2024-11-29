@@ -15,27 +15,15 @@ public class Message {
 
   private String msgBody;
 
-  Message(){}
+  public Message(){}
 
-  Message(String msgBody) {
+  public Message(String msgBody) {
     this.msgBody = msgBody;
   }
 
-  Message(String msgBody, String receiptId) {
+  public Message(String msgBody, String receiptId) {
     this.msgBody = msgBody;
     this.receiptId = receiptId;
-  }
-
-  public String getReceiptId() {
-    return this.receiptId;
-  }
-
-  protected void setReceiptId(String receiptId) {
-    this.receiptId = receiptId;
-  }
-
-  protected void setVisibleFrom(long visibleFrom) {
-    this.visibleFrom = visibleFrom;
   }
 
   /*
@@ -49,10 +37,6 @@ public class Message {
 
   public String getBody() {
     return msgBody;
-  }
-
-  protected int getAttempts() {
-    return attempts;
   }
 
   protected void incrementAttempts() {

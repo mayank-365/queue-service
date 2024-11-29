@@ -1,24 +1,26 @@
 package com.example;
 
+import com.example.dto.PriorityMessage;
 import org.junit.Before;
 import org.junit.Test;
-
-import java.io.IOException;
 
 import static org.junit.Assert.*;
 
 public class RedisQueueServiceTest {
     private RedisQueueService qs;
-    private String queueUrl = "mystash";
+    private final String queueUrl = "mystash";
 
     @Before
     public void setup() {
         qs = new RedisQueueService();
     }
 
+    /**
+     * Test method to test Push, Pull and Delete Functionality
+     */
     @Test
-    public void testSendMessage() throws IOException {
-        String msgJson= "{\n" +
+    public void testSendMessage() {
+        String msgJson = "{\n" +
                 "  \"message\": {\n" +
                 "    \"msgBody\": \"Good message!\"\n" +
                 "  }\n" +
@@ -33,9 +35,12 @@ public class RedisQueueServiceTest {
         qs.delete(queueUrl, msg.getReceiptId());
     }
 
+    /**
+     * Test method to test for Default Priority
+     */
     @Test
-    public void testPullMessageWithDefaultPriority() throws IOException {
-        String msgJson= "{\n" +
+    public void testPullMessageWithDefaultPriority() {
+        String msgJson = "{\n" +
                 "  \"message\": {\n" +
                 "    \"msgBody\": \"Good message!\"\n" +
                 "  }\n" +
@@ -51,8 +56,11 @@ public class RedisQueueServiceTest {
         qs.delete(queueUrl, msg.getReceiptId());
     }
 
+    /**
+     * Test method to Test for different priorities
+     */
     @Test
-    public void testPullMultipleMessage() throws IOException {
+    public void testPullMultipleMessage() {
         String[] msgJson = {
                 "{\n" +
                         "  \"message\": {\n" +
@@ -112,14 +120,20 @@ public class RedisQueueServiceTest {
         assertTrue(pulledMsg3.getReceiptId() != null && pulledMsg3.getReceiptId().length() > 0);
     }
 
+    /**
+     * Test method to test the behaviour when Pulling from the Empty Queue
+     */
     @Test
-    public void testPullEmptyQueue() throws IOException {
+    public void testPullEmptyQueue() {
         PriorityMessage msg = qs.pull(queueUrl);
         assertNull(msg);
     }
 
+    /**
+     * Test Method to verify the FIFO ordering when Priorities are equal
+     */
     @Test
-    public void testFIFO2Msgs() throws IOException {
+    public void testFIFO2Msgs() {
 
 
         String[] msgStrs = {

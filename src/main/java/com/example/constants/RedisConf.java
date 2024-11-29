@@ -1,4 +1,4 @@
-package com.example;
+package com.example.constants;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -7,8 +7,8 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class MessageBody {
-    private String message;
-    private int priority;
-    private long timestamp;
+public class RedisConf {
+
+    private String redisEndpointUrl;
+    private String redisApiToken;
 }

@@ -1,6 +1,8 @@
-package com.example;
+package com.example.utils;
 
-import com.example.QueueException.RedisQueueException;
+import com.example.constants.Constants;
+import com.example.constants.RedisConf;
+import com.example.queueexception.RedisQueueException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -10,9 +12,11 @@ import java.util.Properties;
 import java.util.UUID;
 
 public class Utils {
-    private static Properties getConfPropertyObject(){
+
+    private static Properties getConfPropertyObject() {
         Properties confInfo = new Properties();
-        InputStream inStream = Utils.class.getClassLoader().getResourceAsStream(Constants.PROP_FILENAME);
+        InputStream inStream = Utils.class.getClassLoader()
+            .getResourceAsStream(Constants.PROP_FILENAME);
         try {
             confInfo.load(inStream);
         } catch (IOException e) {
@@ -20,6 +24,7 @@ public class Utils {
         }
         return confInfo;
     }
+
     public static long getVisibilityTimeout() {
         Properties confInfo = getConfPropertyObject();
         return Integer.parseInt(confInfo.getProperty("visibilityTimeout", "30"));
@@ -43,17 +48,22 @@ public class Utils {
         if (messageMap == null) {
             throw new RedisQueueException("EXC2", "Message is empty");
         }
-        if (!messageMap.containsKey("attempts"))
-            messageMap.put("attempts",0);
-        if (!messageMap.containsKey("visibleFrom"))
+        if (!messageMap.containsKey("attempts")) {
+            messageMap.put("attempts", 0);
+        }
+        if (!messageMap.containsKey("visibleFrom")) {
             messageMap.put("visibleFrom", 0);
-        if (!messageMap.containsKey("receiptId"))
+        }
+        if (!messageMap.containsKey("receiptId")) {
             messageMap.put("receiptId", UUID.randomUUID().toString());
+        }
 
-        if (!jsonMap.containsKey("score"))
+        if (!jsonMap.containsKey("score")) {
             jsonMap.put("score", 0);
-        if (!jsonMap.containsKey("timestamp"))
+        }
+        if (!jsonMap.containsKey("timestamp")) {
             jsonMap.put("timestamp", System.currentTimeMillis());
+        }
 
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonMap);
     }

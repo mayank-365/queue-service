@@ -1,11 +1,13 @@
-package com.example;
+package com.example.dto;
 
+import com.example.Message;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
 public class PriorityMessage extends Message {
+
     private int priority;
     private long timestamp;
 
@@ -15,7 +17,8 @@ public class PriorityMessage extends Message {
         this.timestamp = timestamp;
     }
 
-    public PriorityMessage(String msgBody, String receiptId, int priority, long timestamp, int attempts, long visibleFrom) {
+    public PriorityMessage(String msgBody, String receiptId, int priority, long timestamp,
+        int attempts, long visibleFrom) {
         super(msgBody, receiptId);
         super.setAttempts(attempts);
         super.setVisibleFrom(visibleFrom);

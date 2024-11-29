@@ -1,9 +1,10 @@
-package com.example.QueueException;
+package com.example.queueexception;
 
 import lombok.Getter;
 
 @Getter
 public class QueueException extends RuntimeException {
+
     private final String messageCode;
     private final String messageDesc;
 

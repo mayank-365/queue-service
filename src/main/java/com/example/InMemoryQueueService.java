@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 public class InMemoryQueueService implements QueueService {
   private final Map<String, Queue<Message>> queues;
 
-  private long visibilityTimeout;
+  private final long visibilityTimeout;
 
   InMemoryQueueService() {
     this.queues = new ConcurrentHashMap<>();
@@ -53,7 +53,7 @@ public class InMemoryQueueService implements QueueService {
       msg.incrementAttempts();
       msg.setVisibleFrom(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(visibilityTimeout));
 
-      return new Message(msg.getBody(), msg.getReceiptId());
+      return new Message(msg.getMsgBody(), msg.getReceiptId());
     }
   }
 

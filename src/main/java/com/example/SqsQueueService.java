@@ -9,7 +9,7 @@ public class SqsQueueService implements QueueService {
   //
   // The QueueService implementation intended for a production environment.
   //
-  private AmazonSQS sqs;
+  private final AmazonSQS sqs;
 
   public SqsQueueService(AmazonSQSClient sqsClient) {
     this.sqs = sqsClient;

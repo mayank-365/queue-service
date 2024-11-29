@@ -1,6 +1,9 @@
-package com.example;
+package com.example.constants;
+
+import com.example.utils.Utils;
 
 public class Constants {
+
     public static final String PROP_FILENAME = "config.properties";
     public static final long VISIBILITY_TIMEOUT = Utils.getVisibilityTimeout();
 

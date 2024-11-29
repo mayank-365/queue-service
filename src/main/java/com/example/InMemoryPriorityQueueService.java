@@ -1,13 +1,22 @@
 package com.example;
 
-import com.example.QueueException.QueueException;
+import com.example.constants.Constants;
+import com.example.queueexception.QueueException;
+import com.example.dto.MessageBody;
+import com.example.dto.PriorityMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public class InMemoryPriorityQueueService implements QueueService {
+
     private final Map<String, Queue<PriorityMessage>> queues;
 
     public InMemoryPriorityQueueService() {
@@ -16,24 +25,27 @@ public class InMemoryPriorityQueueService implements QueueService {
 
     @Override
     public void push(String queueUrl, String msgBody) {
-        if (queueUrl == null)
-            throw new QueueException("EXC1","Queue Url Is Null.");
+        if (queueUrl == null) {
+            throw new QueueException("EXC1", "Queue Url Is Null.");
+        }
 
         Queue<PriorityMessage> queue = queues.get(queueUrl);
         if (queue == null) {
-            queue = new PriorityBlockingQueue<>(10, Comparator.comparingInt(PriorityMessage::getPriority)
-                    .reversed()
+            queue = new PriorityBlockingQueue<>(10,
+                Comparator.comparingInt(PriorityMessage::getPriority).reversed()
                     .thenComparingLong(PriorityMessage::getTimestamp));
             queues.put(queueUrl, queue);
         }
 
-        queue.add(new PriorityMessage(msgBody, this.extractPriorityFromJson(msgBody), System.currentTimeMillis()));
+        queue.add(new PriorityMessage(msgBody, this.extractPriorityFromJson(msgBody),
+            System.currentTimeMillis()));
     }
 
     @Override
     public PriorityMessage pull(String queueUrl) {
-        if (queueUrl == null)
-            throw new QueueException("EXC1","Queue Url Is Null.");
+        if (queueUrl == null) {
+            throw new QueueException("EXC1", "Queue Url Is Null.");
+        }
 
         Queue<PriorityMessage> queue = queues.get(queueUrl);
 
@@ -44,19 +56,21 @@ public class InMemoryPriorityQueueService implements QueueService {
         PriorityMessage msg = queue.peek();
         msg.setReceiptId(UUID.randomUUID().toString());
         msg.incrementAttempts();
-        msg.setVisibleFrom(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(Constants.VISIBILITY_TIMEOUT));
+        msg.setVisibleFrom(
+            System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(Constants.VISIBILITY_TIMEOUT));
 
         return msg;
     }
 
     @Override
     public void delete(String queueUrl, String receiptId) {
-        if (queueUrl == null)
-            throw new QueueException("EXC1","Queue Url Is Null.");
+        if (queueUrl == null) {
+            throw new QueueException("EXC1", "Queue Url Is Null.");
+        }
 
         Queue<PriorityMessage> queue = queues.get(queueUrl);
 
-        if(queue == null || queue.isEmpty()) {
+        if (queue == null || queue.isEmpty()) {
             return;
         }
 
@@ -71,13 +85,12 @@ public class InMemoryPriorityQueueService implements QueueService {
     }
 
     private int extractPriorityFromJson(String msgBody) {
-        try{
+        try {
             ObjectMapper mapper = new ObjectMapper();
             MessageBody messageBody = mapper.readValue(msgBody, MessageBody.class);
             return messageBody.getPriority();
         } catch (Exception e) {
-            e.printStackTrace();
         }
-        return 0; // Default priority if not found or error occurred
+        return 0;
     }
 }
