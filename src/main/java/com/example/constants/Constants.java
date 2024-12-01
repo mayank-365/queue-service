@@ -11,4 +11,7 @@ public class Constants {
     public static final String REDIS_REV_RANGE_COMMAND = "zrevrange";
     public static final String REDIS_ZREM_COMMAND = "zrem";
     public static final RedisConf REDIS_CONF = Utils.getRedisConfig();
+    public static final String REDIS_ZRANGEBYSCORE_COMMAND = "zrangebyscore";
+
+
 }

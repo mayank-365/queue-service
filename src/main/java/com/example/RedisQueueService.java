@@ -41,35 +41,45 @@ public class RedisQueueService implements QueueService {
 
     @Override
     public PriorityMessage pull(String queueUrl) {
+        try {
+            String maxScoreResponse = makeGetRequest(
+                Constants.REDIS_CONF.getRedisEndpointUrl() + "/" + Constants.REDIS_REV_RANGE_COMMAND
+                    + "/" + queueUrl + "/0/0"
+            );
+            int maxScore = extractMaxScore(maxScoreResponse);
 
-        String redisResponse = makeGetRequest(
-            Constants.REDIS_CONF.getRedisEndpointUrl() + "/" + Constants.REDIS_REV_RANGE_COMMAND
-                + "/" + queueUrl + "/0/-1");
-        List<PriorityMessage> messages = createMessageFromRedisResponse(redisResponse);
+            if (maxScore == -1) {
+                return null;
+            }
+            String maxScoreMessagesResponse = makeGetRequest(
+                Constants.REDIS_CONF.getRedisEndpointUrl() + "/"
+                    + Constants.REDIS_ZRANGEBYSCORE_COMMAND
+                    + "/" + queueUrl + "/" + maxScore + "/" + maxScore
+            );
+            List<PriorityMessage> maxScoreMessages = createMessageFromRedisResponse(
+                maxScoreMessagesResponse);
 
-        int maxScore = messages.stream().mapToInt(PriorityMessage::getPriority).max().orElse(0);
+            PriorityMessage message = maxScoreMessages.stream()
+                .min(Comparator.comparingLong(PriorityMessage::getTimestamp))
+                .orElse(null);
 
-        List<PriorityMessage> maxScoreMessages = messages.stream()
-            .filter(msg -> msg.getPriority() == maxScore).collect(Collectors.toList());
+            if (message == null) {
+                return null;
+            }
+            String existingMessage = PriorityMessageToRedisApiResponseMapper.convertPriorityMessageToRedisApiResponse(
+                message);
 
-        PriorityMessage message = maxScoreMessages.stream()
-            .min(Comparator.comparingLong(PriorityMessage::getTimestamp)).orElse(null);
+            message.setVisibleFrom(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(
+                Constants.VISIBILITY_TIMEOUT));
+            message.incrementAttempts();
 
-        if (message == null) {
-            return null;
+            deleteMessage(queueUrl, existingMessage, message.getPriority());
+            updateExistingMessage(queueUrl, message);
+
+            return message;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to pull message from Redis", e);
         }
-
-        String existingMessage = PriorityMessageToRedisApiResponseMapper.convertPriorityMessageToRedisApiResponse(
-            message);
-
-        message.setVisibleFrom(
-            System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(Constants.VISIBILITY_TIMEOUT));
-        message.incrementAttempts();
-
-        deleteMessage(queueUrl, existingMessage, message.getPriority());
-        updateExistingMessage(queueUrl, message);
-
-        return message;
     }
 
     private void deleteMessage(String queueUrl, String message, int priority) {
@@ -115,7 +125,6 @@ public class RedisQueueService implements QueueService {
         return 0;
     }
 
-    // this method creates a Message object from response received from redis.
     private List<PriorityMessage> createMessageFromRedisResponse(String response) {
         try {
             ObjectMapper mapper = new ObjectMapper();
@@ -137,24 +146,21 @@ public class RedisQueueService implements QueueService {
     }
 
     private String makeGetRequest(String apiUrl) {
-        CloseableHttpClient client = HttpClients.createDefault();
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpGet httpGet = new HttpGet(apiUrl);
+            httpGet.addHeader("Content-Type", "application/json");
+            httpGet.addHeader("Authorization", "Bearer " + Constants.REDIS_CONF.getRedisApiToken());
 
-        HttpGet httpGet = new HttpGet(apiUrl);
-        httpGet.addHeader("Content-Type", "application/json");
-        httpGet.addHeader("Authorization",
-            String.format("Bearer %s", Constants.REDIS_CONF.getRedisApiToken()));
-
-        try {
             HttpResponse response = client.execute(httpGet);
-
             if (response.getStatusLine().getStatusCode() != 200) {
-                throw new RuntimeException(String.format("Redis Api failed with status %s",
-                    response.getStatusLine().getStatusCode()));
+                throw new RuntimeException(
+                    "Redis API failed with status: " + response.getStatusLine().getStatusCode());
             }
-            String responseEntity = EntityUtils.toString(response.getEntity());
-            return responseEntity;
+
+            String responseBody = EntityUtils.toString(response.getEntity());
+            return responseBody;
         } catch (Exception e) {
-            throw new RuntimeException("Unable to call Redis api", e);
+            throw new RuntimeException("Failed to execute Redis GET request", e);
         }
     }
 
@@ -183,6 +189,21 @@ public class RedisQueueService implements QueueService {
             return EntityUtils.toString(response.getEntity());
         } catch (Exception e) {
             throw new RuntimeException("Unable to call Redis api", e);
+        }
+    }
+
+    private int extractMaxScore(String response) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            RedisApiResponse apiResponse = mapper.readValue(response, RedisApiResponse.class);
+            if (apiResponse.getResult().isEmpty()) {
+                return -1;
+            }
+            RedisMessageBody messageBody = mapper.readValue(apiResponse.getResult().get(0),
+                RedisMessageBody.class);
+            return messageBody.getScore();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract max score from Redis response", e);
         }
     }
 }
