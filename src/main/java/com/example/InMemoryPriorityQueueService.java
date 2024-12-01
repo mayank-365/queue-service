@@ -7,11 +7,11 @@ import com.example.dto.PriorityMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -20,7 +20,7 @@ public class InMemoryPriorityQueueService implements QueueService {
     private final Map<String, Queue<PriorityMessage>> queues;
 
     public InMemoryPriorityQueueService() {
-        this.queues = new HashMap<>();
+        this.queues = new ConcurrentHashMap<>();
     }
 
     @Override
